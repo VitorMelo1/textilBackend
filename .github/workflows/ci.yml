@@ -15,8 +15,8 @@ env:
   ENV: test
   DATABASE_URL: postgresql+asyncpg://textil:textil@localhost:5432/textil_test
   REDIS_URL: redis://localhost:6379/0
-  JWT_SECRET: change-me-in-dev
-  SESSION_SECRET: change-me-in-dev
+  JWT_SECRET: ci-jwt-secret-for-tests-only-32-chars-minimum
+  SESSION_SECRET: ci-session-secret-for-tests-only-32-chars-minimum
   AUTH_COOKIE_SECURE: "false"
   CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
 
