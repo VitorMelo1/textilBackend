@@ -359,13 +359,13 @@ async def update_current_subscription(
     await session.commit()
     return await _to_subscription_out(session, sub)
 
-  settings = _require_stripe()
   if not current or not current.stripe_subscription_id:
     raise HTTPException(
       status_code=409,
       detail="no active stripe subscription to change; create checkout first",
     )
 
+  settings = _require_stripe()
   price_id = _price_map(settings).get(body.plan_key)
   if not price_id:
     raise HTTPException(status_code=503, detail=f"stripe price not configured for {body.plan_key}")

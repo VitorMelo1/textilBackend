@@ -11,6 +11,15 @@ concurrency:
   group: backend-ci-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  ENV: test
+  DATABASE_URL: postgresql+asyncpg://textil:textil@localhost:5432/textil_test
+  REDIS_URL: redis://localhost:6379/0
+  JWT_SECRET: change-me-in-dev
+  SESSION_SECRET: change-me-in-dev
+  AUTH_COOKIE_SECURE: "false"
+  CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+
 jobs:
   backend-lint:
     name: backend-lint

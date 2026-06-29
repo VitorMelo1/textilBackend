@@ -3,6 +3,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 pytest.importorskip("asyncpg")
 
@@ -50,6 +51,30 @@ async def test_update_current_subscription_basic_keeps_stripe_ids() -> None:
   upsert_mock.assert_awaited_once()
   assert upsert_mock.await_args.kwargs["stripe_customer_id"] == "cus_123"
   assert upsert_mock.await_args.kwargs["stripe_subscription_id"] == "sub_123"
+
+
+@pytest.mark.asyncio
+async def test_update_current_subscription_paid_plan_requires_checkout_first() -> None:
+  session = AsyncMock()
+  claims = type("Claims", (), {"org": "org-1"})()
+  plan = type("Plan", (), {"id": "plan-pro", "key": "professional"})()
+
+  with (
+    patch("app.entities.plans.router._ensure_default_plans", new=AsyncMock()),
+    patch("app.entities.plans.router._get_plan_by_key", new=AsyncMock(return_value=plan)),
+    patch("app.entities.plans.router._get_subscription_for_org", new=AsyncMock(return_value=None)),
+    patch("app.entities.plans.router._require_stripe") as require_stripe_mock,
+  ):
+    with pytest.raises(HTTPException) as exc:
+      await update_current_subscription(
+        UpdateSubscriptionRequest(plan_key="professional"),
+        claims=claims,
+        session=session,
+      )
+
+  assert exc.value.status_code == 409
+  assert exc.value.detail == "no active stripe subscription to change; create checkout first"
+  require_stripe_mock.assert_not_called()
 
 
 @pytest.mark.asyncio

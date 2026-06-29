@@ -48,12 +48,11 @@ async def _member_can_chat(session: AsyncSession, *, organization_id: str, user_
   return has_permission(role=member.role, permissions_csv=member.permissions_csv, slug="chat")
 
 
-def _claims_from_request_auth(token: str | None, cookie_token: str | None) -> TokenClaims:
-  raw = token or cookie_token
-  if not raw:
+def _claims_from_request_auth(cookie_token: str | None) -> TokenClaims:
+  if not cookie_token:
     raise HTTPException(status_code=401, detail="missing auth token")
   try:
-    return require_claims(raw)
+    return require_claims(cookie_token)
   except ValueError:
     raise HTTPException(status_code=401, detail="invalid token")
 
@@ -62,13 +61,12 @@ def _claims_from_request_auth(token: str | None, cookie_token: str | None) -> To
 async def backfill_messages(
   conversation_id: str,
   request: Request,
-  token: str | None = Query(default=None, description="access token (JWT); fallback: cookie httpOnly"),
   after: str | None = Query(default=None, description="ISO datetime (UTC) to fetch after"),
   limit: int = Query(default=50, ge=1, le=200),
   session: AsyncSession = Depends(get_db_session),
 ):
   settings = get_settings()
-  claims = _claims_from_request_auth(token, request.cookies.get(settings.ACCESS_COOKIE_NAME))
+  claims = _claims_from_request_auth(request.cookies.get(settings.ACCESS_COOKIE_NAME))
   if not await _member_can_chat(session, organization_id=claims.org, user_id=claims.sub):
     raise HTTPException(status_code=403, detail="chat permission required")
   if not await _is_member(session, organization_id=claims.org, conversation_id=conversation_id, user_id=claims.sub):
@@ -99,7 +97,7 @@ async def backfill_messages(
 @router.websocket("/ws")
 async def websocket_chat(ws: WebSocket):
   settings = get_settings()
-  token = ws.query_params.get("token") or ws.cookies.get(settings.ACCESS_COOKIE_NAME)
+  token = ws.cookies.get(settings.ACCESS_COOKIE_NAME)
   if not token:
     await ws.close(code=4401)
     return
