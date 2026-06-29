@@ -1,0 +1,79 @@
+name: "Feature Backend"
+description: "Solicitar nova funcionalidade no backend"
+title: "[FEAT-BACK] "
+labels: ["feature", "backend"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      placeholder: Qual capacidade de negócio/API será adicionada?
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      placeholder: Motivação, dependências e regras de negócio.
+    validations:
+      required: true
+  - type: textarea
+    id: escopo
+    attributes:
+      label: Escopo
+      placeholder: Endpoints, entidades e comportamentos incluídos.
+    validations:
+      required: true
+  - type: textarea
+    id: fora_escopo
+    attributes:
+      label: Fora do escopo
+  - type: textarea
+    id: criterios_aceite
+    attributes:
+      label: Critérios de aceite
+      placeholder: Contratos, respostas esperadas e validações.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - API
+        - Auth/Permissões
+        - Banco/Migrations
+        - Chat/Realtime
+        - Billing/Planos
+        - Observabilidade
+        - Outro
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+      placeholder: Ex.: Sprint 12
+  - type: textarea
+    id: arquivos_provaveis
+    attributes:
+      label: Arquivos prováveis
+  - type: textarea
+    id: como_testar
+    attributes:
+      label: Como testar
+      placeholder: Comandos e passos para validar.
+    validations:
+      required: true
+

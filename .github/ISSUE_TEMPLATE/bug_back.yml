@@ -1,0 +1,78 @@
+name: "Bug Backend"
+description: "Reportar bug no backend"
+title: "[BUG-BACK] "
+labels: ["bug", "backend"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      placeholder: Qual comportamento incorreto deve ser corrigido?
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      placeholder: Endpoint/serviço afetado, payloads e impacto.
+    validations:
+      required: true
+  - type: textarea
+    id: escopo
+    attributes:
+      label: Escopo
+      placeholder: Correção esperada nesta issue.
+    validations:
+      required: true
+  - type: textarea
+    id: fora_escopo
+    attributes:
+      label: Fora do escopo
+  - type: textarea
+    id: criterios_aceite
+    attributes:
+      label: Critérios de aceite
+      placeholder: Evidências de correção e não regressão.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - API
+        - Auth/Permissões
+        - Banco/Migrations
+        - Chat/Realtime
+        - Billing/Planos
+        - Observabilidade
+        - Outro
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+  - type: textarea
+    id: arquivos_provaveis
+    attributes:
+      label: Arquivos prováveis
+  - type: textarea
+    id: como_testar
+    attributes:
+      label: Como testar
+      placeholder: Passos de reprodução e validação.
+    validations:
+      required: true
+

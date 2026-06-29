@@ -1,0 +1,11 @@
+# Configuração do Ruff (lint + format) — convenção do repo: indentação de 2 espaços.
+# Sem esta config, `ruff format --check .` (CI backend-lint) reprovava o repo inteiro
+# porque o default do formatter é 4 espaços / linha 88.
+
+[tool.ruff]
+line-length = 120
+indent-width = 2
+
+[tool.ruff.lint.per-file-ignores]
+# Migrations geradas seguem o template do Alembic.
+"migrations/*" = ["E501"]

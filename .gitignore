@@ -1,0 +1,56 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.nox/
+.tox/
+
+# --- Virtual environments ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- Builds / reports ---
+build/
+dist/
+*.egg-info/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Local DB / temp ---
+*.sqlite
+*.sqlite3
+*.db
+tmp/
+temp/
+
+# --- Environments / secrets ---
+.env
+.env.local
+.env.*.local
+.env.*
+!.env.example
+!.env.*.example
+
+# --- Misc ---
+.cache/
+

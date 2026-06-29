@@ -1,0 +1,137 @@
+name: Backend CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-lint:
+    name: backend-lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: python -m ruff check .
+
+      - name: Ruff format check
+        run: python -m ruff format --check .
+
+  backend-test:
+    name: backend-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run tests with coverage
+        run: python -m pytest --cov=app --cov-report=term-missing --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: coverage.xml
+          retention-days: 7
+
+  backend-validate:
+    name: backend-validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Validate migrations (dry-run SQL)
+        run: |
+          if [ -f alembic.ini ] && [ -d migrations ]; then
+            python -m alembic upgrade head --sql > /tmp/alembic.sql
+            if ! test -s /tmp/alembic.sql; then
+              echo "::error::alembic upgrade head --sql produced no output."
+              exit 1
+            fi
+            echo "Migration SQL validated ($(wc -l < /tmp/alembic.sql) lines)."
+          else
+            echo "::warning::alembic.ini or migrations/ not found — skipping migration validation."
+          fi
+
+  quality-gate:
+    name: quality-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [backend-lint, backend-test, backend-validate]
+    if: always()
+
+    steps:
+      - name: Validate required checks
+        run: |
+          echo "backend-lint:     ${{ needs.backend-lint.result }}"
+          echo "backend-test:     ${{ needs.backend-test.result }}"
+          echo "backend-validate: ${{ needs.backend-validate.result }}"
+
+          if [ "${{ needs.backend-lint.result }}" != "success" ]; then
+            echo "::error::backend-lint failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.backend-test.result }}" != "success" ]; then
+            echo "::error::backend-test failed."
+            exit 1
+          fi
+
+          if [ "${{ needs.backend-validate.result }}" != "success" ]; then
+            echo "::error::backend-validate failed."
+            exit 1
+          fi
+
+          echo "All backend checks passed."

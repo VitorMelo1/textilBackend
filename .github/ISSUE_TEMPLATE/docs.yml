@@ -1,0 +1,73 @@
+name: "Docs"
+description: "Solicitar criação/atualização de documentação"
+title: "[DOCS] "
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+    validations:
+      required: true
+  - type: textarea
+    id: escopo
+    attributes:
+      label: Escopo
+    validations:
+      required: true
+  - type: textarea
+    id: fora_escopo
+    attributes:
+      label: Fora do escopo
+  - type: textarea
+    id: criterios_aceite
+    attributes:
+      label: Critérios de aceite
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - Frontend
+        - Backend
+        - CI/CD
+        - Arquitetura
+        - Produto
+        - Outro
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+  - type: textarea
+    id: arquivos_provaveis
+    attributes:
+      label: Arquivos prováveis
+  - type: textarea
+    id: como_testar
+    attributes:
+      label: Como testar
+      placeholder: Como validar se a documentação está correta e útil.
+    validations:
+      required: true
+

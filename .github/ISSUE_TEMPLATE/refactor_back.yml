@@ -1,0 +1,78 @@
+name: "Refactor Backend"
+description: "Solicitar refatoração no backend"
+title: "[REFACTOR-BACK] "
+labels: ["refactor", "backend"]
+body:
+  - type: textarea
+    id: objetivo
+    attributes:
+      label: Objetivo
+      placeholder: Qual melhoria técnica é esperada?
+    validations:
+      required: true
+  - type: textarea
+    id: contexto
+    attributes:
+      label: Contexto
+      placeholder: Problema atual e por que refatorar.
+    validations:
+      required: true
+  - type: textarea
+    id: escopo
+    attributes:
+      label: Escopo
+      placeholder: Módulos e mudanças incluídas.
+    validations:
+      required: true
+  - type: textarea
+    id: fora_escopo
+    attributes:
+      label: Fora do escopo
+  - type: textarea
+    id: criterios_aceite
+    attributes:
+      label: Critérios de aceite
+      placeholder: Métricas/condições de melhoria.
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      options:
+        - API
+        - Auth/Permissões
+        - Banco/Migrations
+        - Chat/Realtime
+        - Billing/Planos
+        - Observabilidade
+        - Outro
+    validations:
+      required: true
+  - type: dropdown
+    id: prioridade
+    attributes:
+      label: Prioridade
+      options:
+        - P0
+        - P1
+        - P2
+        - P3
+    validations:
+      required: true
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+  - type: textarea
+    id: arquivos_provaveis
+    attributes:
+      label: Arquivos prováveis
+  - type: textarea
+    id: como_testar
+    attributes:
+      label: Como testar
+      placeholder: Comandos de validação e cenários.
+    validations:
+      required: true
+

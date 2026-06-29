@@ -1,0 +1,18 @@
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+pydantic-settings==2.10.1
+SQLAlchemy==2.0.43
+asyncpg==0.30.0
+alembic==1.16.5
+redis==6.4.0
+python-jose[cryptography]==3.5.0
+authlib==1.6.1
+# Exigidos pelo fluxo OAuth: SessionMiddleware (itsdangerous) e cliente HTTP do authlib (httpx)
+itsdangerous==2.2.0
+httpx==0.28.1
+python-multipart==0.0.20
+passlib[bcrypt]==1.7.4
+# passlib 1.7.4 nao suporta bcrypt>=4.1 (API __about__ removida); manter o par compativel
+bcrypt==4.0.1
+stripe==15.2.0
+sentry-sdk[fastapi]==2.62.0
