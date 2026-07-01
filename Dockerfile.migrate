@@ -12,5 +12,8 @@ COPY alembic.ini /app/alembic.ini
 COPY migrations /app/migrations
 COPY shared /app/shared
 
+RUN addgroup --system app && adduser --system --ingroup app --home /app app
+USER app
+
 # "python -m" coloca o CWD (/app) no sys.path — necessário para env.py importar "shared".
 CMD ["python", "-m", "alembic", "upgrade", "head"]

@@ -169,6 +169,7 @@ async def update(
     if value is not None:
       setattr(row, field, value)
   await session.flush()
+  await session.refresh(row)
   return to_out(row)
 
 

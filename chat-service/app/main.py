@@ -14,7 +14,7 @@ from .entities.chat.router import router as chat_router
 def create_app() -> FastAPI:
   configure_logging()
   init_sentry(service_name="chat-service")
-  app = FastAPI(title="TextilMarket Chat Service")
+  app = FastAPI(title="Duonekso Chat Service")
   settings = get_settings()
   cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
   # O frontend consome o backfill REST deste serviço em outra origem (porta 8001).

@@ -127,6 +127,7 @@ async def update_item(
     if value is not None:
       setattr(row, field, value)
   await session.flush()
+  await session.refresh(row)
   return item_to_out(row)
 
 

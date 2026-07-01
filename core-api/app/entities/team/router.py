@@ -8,7 +8,7 @@ from shared.config import get_settings
 from shared.db.session import get_db_session
 from shared.security.deps import require_auth_claims
 from shared.security.jwt import TokenClaims
-from shared.security.permissions import require_owner
+from shared.security.permissions import require_owner_entitled
 
 from . import service
 from .schemas import InviteAcceptRequest, InviteCreate, InviteOut, MemberOut, MemberUpdate
@@ -16,7 +16,7 @@ from .schemas import InviteAcceptRequest, InviteCreate, InviteOut, MemberOut, Me
 
 router = APIRouter(prefix="/organization", tags=["team"])
 
-RequireOwner = Depends(require_owner())
+RequireOwner = Depends(require_owner_entitled("team"))
 
 
 @router.get("/members", response_model=PaginatedResponse[MemberOut])

@@ -154,7 +154,7 @@ async def list_invites(
   status_filter: str | None = "pending",
 ) -> PaginatedResponse[InviteOut]:
   if status_filter is not None and status_filter not in VALID_INVITE_STATUSES:
-    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid invite status filter")
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="invalid invite status filter")
   total = await repo.count_invites(session, organization_id=organization_id, status_filter=status_filter)
   rows = await repo.list_invites(
     session,

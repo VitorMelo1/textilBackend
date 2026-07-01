@@ -18,8 +18,8 @@ class Settings(BaseSettings):
   REDIS_URL: str
 
   JWT_SECRET: str
-  JWT_ISSUER: str = "textilmarket"
-  JWT_AUDIENCE: str = "textilmarket-web"
+  JWT_ISSUER: str = "duonekso"
+  JWT_AUDIENCE: str = "duonekso-web"
   SESSION_SECRET: str | None = None
 
   ACCESS_TOKEN_TTL_SECONDS: int = 900
@@ -27,8 +27,8 @@ class Settings(BaseSettings):
   AUTH_COOKIE_SECURE: bool = False
   AUTH_COOKIE_DOMAIN: str | None = None
   AUTH_COOKIE_SAMESITE: str = "lax"
-  ACCESS_COOKIE_NAME: str = "textil_access_token"
-  REFRESH_COOKIE_NAME: str = "textil_refresh_token"
+  ACCESS_COOKIE_NAME: str = "duonekso_access_token"
+  REFRESH_COOKIE_NAME: str = "duonekso_refresh_token"
 
   CORE_API_BASE_URL: str = "http://localhost:8000"
   CHAT_SERVICE_BASE_URL: str = "http://localhost:8001"

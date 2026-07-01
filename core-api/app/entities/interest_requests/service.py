@@ -20,7 +20,7 @@ def validate_status_transition(current: str, new_status: str) -> None:
   allowed = ALLOWED_STATUS_TRANSITIONS.get(current, set())
   if new_status not in allowed:
     raise HTTPException(
-      status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+      status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
       detail=f"invalid status transition: {current} -> {new_status}",
     )
 
@@ -49,7 +49,7 @@ async def list_for_org(
   provider_id: str | None = None,
 ) -> PaginatedResponse[InterestRequestOut]:
   if status_filter is not None and status_filter not in ALLOWED_STATUS_TRANSITIONS:
-    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="invalid status filter")
+    raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="invalid status filter")
   total = await repo.count_interest_requests(
     session, organization_id=organization_id, status=status_filter, provider_id=provider_id
   )

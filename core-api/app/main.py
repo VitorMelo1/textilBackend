@@ -29,7 +29,7 @@ from shared.observability.sentry import init_sentry
 def create_app() -> FastAPI:
   configure_logging()
   init_sentry(service_name="core-api")
-  app = FastAPI(title="TextilMarket Core API")
+  app = FastAPI(title="Duonekso Core API")
   settings = get_settings()
   cors_origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
   app.add_middleware(
