@@ -15,19 +15,19 @@ PlanTier = str
 
 MODULE_ENTITLEMENT_MATRIX: dict[BusinessProfile, dict[PlanTier, set[str]]] = {
   "solo": {
-    "basic": {"pedidos", "rede", "chat"},
-    "professional": {"pedidos", "rede", "chat"},
-    "enterprise": {"pedidos", "rede", "chat", "fichas"},
+    "basic": {"pedidos", "rede", "chat", "financeiro"},
+    "professional": {"pedidos", "rede", "chat", "financeiro"},
+    "enterprise": {"pedidos", "rede", "chat", "fichas", "financeiro"},
   },
   "atelier": {
-    "basic": {"pedidos", "estoque", "custos", "rede", "chat"},
-    "professional": {"pedidos", "estoque", "custos", "rede", "chat", "fichas"},
-    "enterprise": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "team", "configuracoes"},
+    "basic": {"pedidos", "estoque", "custos", "rede", "chat", "financeiro"},
+    "professional": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "financeiro"},
+    "enterprise": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "team", "configuracoes", "financeiro"},
   },
   "industry": {
-    "basic": {"pedidos", "estoque", "custos", "rede", "chat"},
-    "professional": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "configuracoes"},
-    "enterprise": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "team", "configuracoes"},
+    "basic": {"pedidos", "estoque", "custos", "rede", "chat", "financeiro"},
+    "professional": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "configuracoes", "financeiro"},
+    "enterprise": {"pedidos", "estoque", "custos", "rede", "chat", "fichas", "team", "configuracoes", "financeiro"},
   },
 }
 

@@ -45,6 +45,11 @@ class Settings(BaseSettings):
   STRIPE_PRICE_BASIC: str | None = None
   STRIPE_PRICE_PROFESSIONAL: str | None = None
   STRIPE_PRICE_ENTERPRISE: str | None = None
+  STRIPE_CONNECT_RETURN_URL: str | None = None
+  STRIPE_CONNECT_REFRESH_URL: str | None = None
+  MARKETPLACE_CURRENCY: str = "brl"
+  PLATFORM_FEE_PERCENT: float = 10.0
+  PLATFORM_FEE_MIN_CENTS: int = 200
 
   # Observabilidade (opcional): DSN do Sentry para monitoramento de erros.
   SENTRY_DSN: str | None = None

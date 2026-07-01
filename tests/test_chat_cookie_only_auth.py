@@ -28,3 +28,8 @@ def test_websocket_chat_does_not_read_query_params_token() -> None:
     if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
       if node.func.attr == "get" and isinstance(node.func.value, ast.Attribute):
         assert node.func.value.attr != "query_params"
+
+
+def test_backfill_messages_does_not_filter_messages_by_requester_org() -> None:
+  source = CHAT_ROUTER.read_text(encoding="utf-8")
+  assert "Message.organization_id == claims.org" not in source

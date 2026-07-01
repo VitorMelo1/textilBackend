@@ -11,6 +11,8 @@ from shared.db.models import Plan, Subscription
 from shared.db.session import get_db_session
 from shared.security.deps import require_auth_claims
 
+from app.entities.marketplace_payments import service as marketplace_payment_service
+
 from .schemas import (
   BillingCheckoutRequest,
   BillingCheckoutResponse,
@@ -287,6 +289,16 @@ async def stripe_webhook(
   plan_key = metadata.get("plan_key")
 
   if event_type == "checkout.session.completed":
+    if metadata.get("payment_scope") == "order":
+      await marketplace_payment_service.mark_checkout_completed(
+        session,
+        checkout_session_id=str(data.get("id")),
+        payment_intent_id=(str(data.get("payment_intent")) if data.get("payment_intent") else None),
+        paid_at=_unix_to_datetime(data.get("created")),
+      )
+      await session.commit()
+      return {"received": True}
+
     stripe_customer_id = data.get("customer")
     stripe_subscription_id = data.get("subscription")
     stripe_sub = None
@@ -330,6 +342,54 @@ async def stripe_webhook(
         stripe_customer_id=str(stripe_customer_id) if stripe_customer_id else None,
         stripe_subscription_id=str(stripe_subscription_id) if stripe_subscription_id else None,
         trial_ends_at=_unix_to_datetime(data.get("trial_end")),
+      )
+
+  if event_type == "checkout.session.async_payment_failed":
+    if metadata.get("payment_scope") == "order":
+      await marketplace_payment_service.mark_checkout_failed(
+        session,
+        checkout_session_id=str(data.get("id")),
+        payment_error=str(data.get("last_payment_error") or "async payment failed"),
+      )
+
+  if event_type == "charge.succeeded":
+    payment_intent_id = data.get("payment_intent")
+    transfer_id = data.get("transfer")
+    if payment_intent_id and transfer_id:
+      await marketplace_payment_service.mark_charge_transfer_created(
+        session,
+        payment_intent_id=str(payment_intent_id),
+        order_id=(str(metadata.get("order_id")) if metadata.get("order_id") else None),
+        payout_sent_at=_unix_to_datetime(data.get("created")),
+      )
+
+  if event_type == "charge.refunded":
+    payment_intent_id = data.get("payment_intent")
+    if payment_intent_id:
+      await marketplace_payment_service.mark_payment_refunded(
+        session,
+        payment_intent_id=str(payment_intent_id),
+        order_id=(str(metadata.get("order_id")) if metadata.get("order_id") else None),
+      )
+
+  if event_type in {"charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed"}:
+    payment_intent_id = data.get("payment_intent")
+    if payment_intent_id:
+      await marketplace_payment_service.mark_payment_disputed(
+        session,
+        payment_intent_id=str(payment_intent_id),
+        dispute_id=str(data.get("id")),
+        dispute_status=str(data.get("status") or event_type),
+        order_id=(str(metadata.get("order_id")) if metadata.get("order_id") else None),
+        disputed_at=_unix_to_datetime(data.get("created")),
+      )
+
+  if event_type == "account.updated":
+    stripe_account_id = data.get("id")
+    if stripe_account_id:
+      await marketplace_payment_service.sync_connected_account_snapshot(
+        session,
+        stripe_account_id=str(stripe_account_id),
       )
 
   await session.commit()

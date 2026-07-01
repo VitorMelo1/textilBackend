@@ -7,11 +7,13 @@ class ProviderOut(BaseModel):
   id: str
   name: str
   provider_type: str
+  organization_id: str | None = None
   location: str | None = None
   capacity: str | None = None
   verified: bool
   rating: float
   review_count: int
+  can_chat: bool = False
 
 
 class ProviderCreate(BaseModel):

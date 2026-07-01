@@ -38,6 +38,7 @@ def to_out(row: Order) -> OrderOut:
     stage=row.stage,
     progress=row.progress,
     unit_price=float(row.unit_price) if row.unit_price is not None else 0.0,
+    financial_status=row.financial_status,
     technical_sheet_id=row.technical_sheet_id,
     created_at=row.created_at,
     updated_at=row.updated_at,

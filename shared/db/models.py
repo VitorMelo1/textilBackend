@@ -190,6 +190,12 @@ class Provider(Base, TimestampMixin):
   __tablename__ = "providers"
 
   id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+  organization_id: Mapped[Optional[str]] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True, unique=True, index=True
+  )
+  owner_user_id: Mapped[Optional[str]] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+  )
   name: Mapped[str] = mapped_column(String(240), nullable=False)
   provider_type: Mapped[str] = mapped_column(String(60), nullable=False)  # Bordado/Lavanderia/...
   location: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
@@ -243,9 +249,21 @@ class Conversation(Base, TimestampMixin):
   organization_id: Mapped[str] = mapped_column(
     UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
   )
+  provider_id: Mapped[Optional[str]] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("providers.id", ondelete="SET NULL"), nullable=True, index=True
+  )
+  interest_request_id: Mapped[Optional[str]] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("interest_requests.id", ondelete="SET NULL"), nullable=True, index=True
+  )
+  order_id: Mapped[Optional[str]] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True, index=True
+  )
   title: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
 
-  __table_args__ = (Index("ix_conversations_org_created", "organization_id", "created_at"),)
+  __table_args__ = (
+    Index("ix_conversations_org_created", "organization_id", "created_at"),
+    UniqueConstraint("organization_id", "provider_id", name="uq_conversation_org_provider"),
+  )
 
 
 class ConversationMember(Base, TimestampMixin):
@@ -262,6 +280,7 @@ class ConversationMember(Base, TimestampMixin):
     UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
   )
   role: Mapped[str] = mapped_column(String(40), nullable=False, default="member")
+  last_read_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
   __table_args__ = (UniqueConstraint("conversation_id", "user_id", name="uq_conversation_member"),)
 
@@ -280,6 +299,9 @@ class Message(Base, TimestampMixin):
     UUID(as_uuid=False), ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
   )
   body: Mapped[str] = mapped_column(Text, nullable=False)
+  attachment_url: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+  attachment_name: Mapped[Optional[str]] = mapped_column(String(240), nullable=True)
+  attachment_content_type: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
 
   __table_args__ = (Index("ix_messages_convo_created", "conversation_id", "created_at"),)
 
@@ -352,6 +374,9 @@ class Order(Base, TimestampMixin):
   stage: Mapped[str] = mapped_column(String(40), nullable=False, default="planejamento")
   progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
   unit_price: Mapped[float] = mapped_column(Numeric(14, 4), nullable=False, server_default="0")
+  financial_status: Mapped[str] = mapped_column(
+    String(40), nullable=False, default="awaiting_payment", server_default="awaiting_payment", index=True
+  )
   technical_sheet_id: Mapped[Optional[str]] = mapped_column(
     UUID(as_uuid=False), ForeignKey("technical_sheets.id", ondelete="SET NULL"), nullable=True, index=True
   )
@@ -363,6 +388,58 @@ class Order(Base, TimestampMixin):
     Index("ix_orders_org_stage", "organization_id", "stage"),
     Index("ix_orders_org_created", "organization_id", "created_at"),
     Index("ix_orders_org_deadline", "organization_id", "deadline"),
+  )
+
+
+class StripeConnectedAccount(Base, TimestampMixin):
+  __tablename__ = "stripe_connected_accounts"
+
+  id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+  organization_id: Mapped[str] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+  )
+  stripe_account_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+  onboarding_status: Mapped[str] = mapped_column(String(40), nullable=False, default="pending")
+  charges_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+  payouts_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+  details_submitted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+  default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="brl", server_default="brl")
+
+
+class OrderPayment(Base, TimestampMixin):
+  __tablename__ = "order_payments"
+
+  id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+  organization_id: Mapped[str] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+  )
+  order_id: Mapped[str] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, index=True
+  )
+  amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+  platform_fee_cents: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+  net_amount_cents: Mapped[int] = mapped_column(Integer, nullable=False)
+  currency: Mapped[str] = mapped_column(String(10), nullable=False, default="brl", server_default="brl")
+  status: Mapped[str] = mapped_column(String(40), nullable=False, default="checkout_created", index=True)
+  stripe_checkout_session_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, unique=True)
+  stripe_payment_intent_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
+  stripe_transfer_destination: Mapped[str] = mapped_column(String(120), nullable=False)
+  stripe_refund_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
+  refund_reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+  refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+  stripe_dispute_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
+  dispute_status: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+  disputed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+  payment_error: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+  receipt_number: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+  paid_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+  payout_sent_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+  __table_args__ = (
+    CheckConstraint("amount_cents > 0", name="chk_order_payment_amount_positive"),
+    CheckConstraint("platform_fee_cents >= 0", name="chk_order_payment_fee_non_negative"),
+    CheckConstraint("net_amount_cents >= 0", name="chk_order_payment_net_non_negative"),
+    Index("ix_order_payments_org_created", "organization_id", "created_at"),
   )
 
 

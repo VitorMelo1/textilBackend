@@ -8,6 +8,16 @@ from pydantic import BaseModel, Field
 
 OrderPriority = Literal["high", "medium", "low"]
 OrderStage = Literal["planejamento", "corte", "costura", "bordado", "acabamento", "conferencia", "expedicao"]
+OrderFinancialStatus = Literal[
+  "awaiting_payment",
+  "paid",
+  "payout_sent",
+  "refund_pending",
+  "refunded",
+  "disputed",
+  "payment_failed",
+  "cancelled",
+]
 
 
 class OrderCreate(BaseModel):
@@ -52,6 +62,7 @@ class OrderOut(BaseModel):
   stage: str
   progress: int
   unit_price: float = 0.0
+  financial_status: str = "awaiting_payment"
   technical_sheet_id: str | None = None
   created_at: datetime
   updated_at: datetime

@@ -72,7 +72,7 @@ async def backfill_messages(
   if not await _is_member(session, organization_id=claims.org, conversation_id=conversation_id, user_id=claims.sub):
     raise HTTPException(status_code=403, detail="not a member")
 
-  q = select(Message).where(Message.organization_id == claims.org, Message.conversation_id == conversation_id)
+  q = select(Message).where(Message.conversation_id == conversation_id)
   if after:
     try:
       dt = datetime.fromisoformat(after.replace("Z", "+00:00"))
@@ -88,6 +88,9 @@ async def backfill_messages(
       "conversation_id": m.conversation_id,
       "sender_user_id": m.sender_user_id,
       "body": m.body,
+      "attachment_url": m.attachment_url,
+      "attachment_name": m.attachment_name,
+      "attachment_content_type": m.attachment_content_type,
       "created_at": m.created_at.isoformat(),
     }
     for m in rows
@@ -172,7 +175,11 @@ async def websocket_chat(ws: WebSocket):
       elif mtype == "message":
         conversation_id = str(incoming.get("conversation_id") or "")
         body = str(incoming.get("body") or "").strip()
-        if not conversation_id or not body:
+        attachment = incoming.get("attachment") if isinstance(incoming.get("attachment"), dict) else {}
+        attachment_url = str(attachment.get("url") or "").strip() or None
+        attachment_name = str(attachment.get("name") or "").strip() or None
+        attachment_content_type = str(attachment.get("content_type") or "").strip() or None
+        if not conversation_id or (not body and not attachment_url):
           await ws.send_json({"type": "error", "message": "conversation_id and body required"})
           continue
 
@@ -188,6 +195,9 @@ async def websocket_chat(ws: WebSocket):
             conversation_id=conversation_id,
             sender_user_id=claims.sub,
             body=body,
+            attachment_url=attachment_url,
+            attachment_name=attachment_name,
+            attachment_content_type=attachment_content_type,
           )
           session.add(msg_row)
           await session.flush()
@@ -198,6 +208,9 @@ async def websocket_chat(ws: WebSocket):
             "conversation_id": conversation_id,
             "sender_user_id": claims.sub,
             "body": body,
+            "attachment_url": attachment_url,
+            "attachment_name": attachment_name,
+            "attachment_content_type": attachment_content_type,
             "created_at": msg_row.created_at.replace(tzinfo=timezone.utc).isoformat(),
           }
           await redis.publish(_channel(conversation_id), json.dumps(payload, ensure_ascii=False))

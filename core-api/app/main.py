@@ -20,6 +20,7 @@ from .entities.inventory.router import router as inventory_router
 from .entities.costs.router import labor_router as cost_labor_router
 from .entities.costs.router import material_router as cost_materials_router
 from .entities.costs.router import router as costs_router
+from .entities.marketplace_payments.router import router as marketplace_payments_router
 from .entities.plans.router import router as plans_router
 from shared.config import get_settings
 from shared.observability.logging import RequestContextMiddleware, configure_logging
@@ -57,6 +58,7 @@ def create_app() -> FastAPI:
   app.include_router(costs_router)
   app.include_router(cost_materials_router)
   app.include_router(cost_labor_router)
+  app.include_router(marketplace_payments_router)
   app.include_router(plans_router)
   return app
 

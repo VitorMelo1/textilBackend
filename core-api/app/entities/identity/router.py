@@ -30,6 +30,7 @@ from .repo import (
 from shared.security.hashing import sha256_hex
 from shared.security.passwords import hash_password, verify_password
 from shared.security.rate_limit import enforce_rate_limit
+from app.entities.network.service import upsert_provider_profile_for_org
 
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -128,6 +129,16 @@ async def oauth_google_callback(
     name=name,
     token_data=token,
   )
+  org = await identity_repo.get_org_by_id(session, member.organization_id)
+  await upsert_provider_profile_for_org(
+    session,
+    organization_id=member.organization_id,
+    owner_user_id=user.id,
+    name=(org.name if org else user.name),
+    business_profile=user.business_profile,
+    user_type=user.user_type,
+    description=(org.description if org else None),
+  )
 
   access, refresh = await issue_tokens_for_user(
     session, user_id=user.id, organization_id=member.organization_id, role=member.role
@@ -182,6 +193,14 @@ async def register_local(
     user_type=body.user_type,
     business_profile=body.business_profile,
   )
+  await upsert_provider_profile_for_org(
+    session,
+    organization_id=member.organization_id,
+    owner_user_id=user.id,
+    name=(body.organization_name.strip() if body.organization_name else body.name.strip()),
+    business_profile=body.business_profile,
+    user_type=body.user_type,
+  )
   access, refresh = await issue_tokens_for_user(
     session, user_id=user.id, organization_id=member.organization_id, role=member.role
   )
@@ -220,6 +239,16 @@ async def login_local(
   member = await identity_repo.get_first_org_for_user(session, user.id)
   if member is None:
     raise HTTPException(status_code=400, detail="user has no organization")
+  org = await identity_repo.get_org_by_id(session, member.organization_id)
+  await upsert_provider_profile_for_org(
+    session,
+    organization_id=member.organization_id,
+    owner_user_id=user.id,
+    name=(org.name if org else user.name),
+    business_profile=user.business_profile,
+    user_type=user.user_type,
+    description=(org.description if org else None),
+  )
   access, refresh = await issue_tokens_for_user(
     session, user_id=user.id, organization_id=member.organization_id, role=member.role
   )
@@ -271,6 +300,15 @@ async def update_me(
   if result is None:
     raise HTTPException(status_code=404, detail="user or organization not found")
   user, org = result
+  await upsert_provider_profile_for_org(
+    session,
+    organization_id=claims.org,
+    owner_user_id=claims.sub,
+    name=org.name,
+    business_profile=user.business_profile,
+    user_type=user.user_type,
+    description=org.description,
+  )
   plan_key = await identity_repo.get_subscription_plan_key(session, claims.org)
   await session.commit()
   return MeResponse(

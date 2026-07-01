@@ -46,6 +46,10 @@ async def test_register_endpoint_forwards_business_profile_to_repo() -> None:
       "app.entities.identity.router.issue_tokens_for_user",
       new=AsyncMock(return_value=("access", "refresh")),
     ),
+    patch(
+      "app.entities.identity.router.upsert_provider_profile_for_org",
+      new=AsyncMock(),
+    ) as provider_upsert_mock,
     patch("app.entities.identity.router._set_auth_cookies"),
     patch("app.entities.identity.router.get_settings"),
   ):
@@ -59,6 +63,14 @@ async def test_register_endpoint_forwards_business_profile_to_repo() -> None:
     organization_name=None,
     user_type="faccao",
     business_profile="atelier",
+  )
+  provider_upsert_mock.assert_awaited_once_with(
+    session,
+    organization_id="org-1",
+    owner_user_id="user-1",
+    name="Test User",
+    business_profile="atelier",
+    user_type="faccao",
   )
   assert result.access_token == "access"
 
