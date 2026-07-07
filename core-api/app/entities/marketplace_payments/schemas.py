@@ -7,6 +7,9 @@ from pydantic import BaseModel, Field
 
 class ConnectedAccountOut(BaseModel):
   organization_id: str
+  provider: str = "mercado_pago"
+  mercado_pago_user_id: str | None = None
+  mercado_pago_public_key: str | None = None
   stripe_account_id: str | None = None
   onboarding_status: str = "not_started"
   charges_enabled: bool = False
@@ -45,6 +48,10 @@ class OrderPaymentOut(BaseModel):
   status: str
   receipt_number: str
   stripe_payment_intent_id: str | None = None
+  mercado_pago_preference_id: str | None = None
+  mercado_pago_payment_id: str | None = None
+  mercado_pago_status_detail: str | None = None
+  mercado_pago_refund_id: str | None = None
   stripe_refund_id: str | None = None
   refund_reason: str | None = None
   refunded_at: datetime | None = None

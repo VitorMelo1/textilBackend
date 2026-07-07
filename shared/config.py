@@ -51,6 +51,16 @@ class Settings(BaseSettings):
   PLATFORM_FEE_PERCENT: float = 10.0
   PLATFORM_FEE_MIN_CENTS: int = 200
 
+  # Mercado Pago marketplace (Split 1:1 / Checkout Pro)
+  MERCADO_PAGO_CLIENT_ID: str | None = None
+  MERCADO_PAGO_CLIENT_SECRET: str | None = None
+  MERCADO_PAGO_REDIRECT_URI: str | None = None
+  MERCADO_PAGO_PUBLIC_KEY: str | None = None
+  MERCADO_PAGO_WEBHOOK_URL: str | None = None
+  MERCADO_PAGO_API_BASE_URL: str = "https://api.mercadopago.com"
+  MERCADO_PAGO_AUTH_URL: str = "https://auth.mercadopago.com.br/authorization"
+  MERCADO_PAGO_USE_SANDBOX_CHECKOUT: bool = False
+
   # Observabilidade (opcional): DSN do Sentry para monitoramento de erros.
   SENTRY_DSN: str | None = None
   INVITE_EMAIL_DELIVERY_ENABLED: bool = False

@@ -3,10 +3,32 @@ from __future__ import annotations
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.db.models import Order, OrderPayment, StripeConnectedAccount
+from shared.db.models import MercadoPagoConnectedAccount, Order, OrderPayment, StripeConnectedAccount
 
 
 async def get_connected_account(
+  session: AsyncSession,
+  *,
+  organization_id: str,
+) -> MercadoPagoConnectedAccount | None:
+  q = await session.execute(
+    select(MercadoPagoConnectedAccount).where(MercadoPagoConnectedAccount.organization_id == organization_id)
+  )
+  return q.scalar_one_or_none()
+
+
+async def get_connected_account_by_mp_user_id(
+  session: AsyncSession,
+  *,
+  mp_user_id: str,
+) -> MercadoPagoConnectedAccount | None:
+  q = await session.execute(
+    select(MercadoPagoConnectedAccount).where(MercadoPagoConnectedAccount.mp_user_id == mp_user_id)
+  )
+  return q.scalar_one_or_none()
+
+
+async def get_stripe_connected_account(
   session: AsyncSession,
   *,
   organization_id: str,
@@ -30,8 +52,8 @@ async def get_connected_account_by_stripe_id(
 
 async def create_connected_account(
   session: AsyncSession,
-  row: StripeConnectedAccount,
-) -> StripeConnectedAccount:
+  row: MercadoPagoConnectedAccount | StripeConnectedAccount,
+) -> MercadoPagoConnectedAccount | StripeConnectedAccount:
   session.add(row)
   await session.flush()
   return row
@@ -62,6 +84,15 @@ async def get_current_payment(
   return q.scalar_one_or_none()
 
 
+async def get_payment(
+  session: AsyncSession,
+  *,
+  payment_id: str,
+) -> OrderPayment | None:
+  q = await session.execute(select(OrderPayment).where(OrderPayment.id == payment_id))
+  return q.scalar_one_or_none()
+
+
 async def get_payment_by_checkout_session(
   session: AsyncSession,
   *,
@@ -80,6 +111,28 @@ async def get_payment_by_payment_intent(
 ) -> OrderPayment | None:
   q = await session.execute(
     select(OrderPayment).where(OrderPayment.stripe_payment_intent_id == payment_intent_id)
+  )
+  return q.scalar_one_or_none()
+
+
+async def get_payment_by_mercado_pago_payment_id(
+  session: AsyncSession,
+  *,
+  mercado_pago_payment_id: str,
+) -> OrderPayment | None:
+  q = await session.execute(
+    select(OrderPayment).where(OrderPayment.mercado_pago_payment_id == mercado_pago_payment_id)
+  )
+  return q.scalar_one_or_none()
+
+
+async def get_payment_by_mercado_pago_preference_id(
+  session: AsyncSession,
+  *,
+  mercado_pago_preference_id: str,
+) -> OrderPayment | None:
+  q = await session.execute(
+    select(OrderPayment).where(OrderPayment.mercado_pago_preference_id == mercado_pago_preference_id)
   )
   return q.scalar_one_or_none()
 

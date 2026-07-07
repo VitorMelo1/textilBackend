@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
+from urllib.parse import urlencode
+from uuid import uuid4
 
+import httpx
 from fastapi import HTTPException, status
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.config import get_settings
-from shared.db.models import Order, OrderPayment, StripeConnectedAccount
+from shared.db.models import MercadoPagoConnectedAccount, Order, OrderPayment, StripeConnectedAccount
 
 from . import repo
 from .schemas import (
@@ -35,6 +40,9 @@ PAYMENT_STATUS_DISPUTED = "disputed"
 PAYMENT_STATUS_FAILED = "payment_failed"
 PAYMENT_STATUS_CANCELLED = "cancelled"
 
+MERCADO_PAGO_PROVIDER_DESTINATION = "mercado_pago"
+MERCADO_PAGO_STATE_SALT = "mercado-pago-oauth"
+
 
 def _require_stripe():
   settings = get_settings()
@@ -52,6 +60,77 @@ def _stripe_obj_get(obj, key: str, default=None):
   return getattr(obj, key, default)
 
 
+def _require_mercado_pago_oauth_settings():
+  settings = get_settings()
+  missing = [
+    key
+    for key in ("MERCADO_PAGO_CLIENT_ID", "MERCADO_PAGO_CLIENT_SECRET", "MERCADO_PAGO_REDIRECT_URI")
+    if not getattr(settings, key)
+  ]
+  if missing:
+    raise HTTPException(status_code=503, detail=f"mercado pago not configured: {', '.join(missing)}")
+  return settings
+
+
+def _mercado_pago_base_url() -> str:
+  return get_settings().MERCADO_PAGO_API_BASE_URL.rstrip("/")
+
+
+def _mercado_pago_headers(access_token: str) -> dict[str, str]:
+  return {
+    "accept": "application/json",
+    "content-type": "application/json",
+    "Authorization": f"Bearer {access_token}",
+  }
+
+
+def _mp_money(cents: int) -> float:
+  return float((Decimal(cents) / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+def _raise_mp_error(response: httpx.Response, fallback: str) -> None:
+  if response.status_code < 400:
+    return
+  try:
+    payload = response.json()
+  except ValueError:
+    payload = response.text
+  raise HTTPException(status_code=400, detail=f"{fallback}: {payload}")
+
+
+def _state_serializer() -> URLSafeTimedSerializer:
+  settings = get_settings()
+  secret = settings.SESSION_SECRET or settings.JWT_SECRET
+  return URLSafeTimedSerializer(secret_key=secret, salt=MERCADO_PAGO_STATE_SALT)
+
+
+def _encode_oauth_state(*, organization_id: str, return_url: str | None, refresh_url: str | None) -> str:
+  return _state_serializer().dumps(
+    {"organization_id": organization_id, "return_url": return_url, "refresh_url": refresh_url}
+  )
+
+
+def _decode_oauth_state(state: str) -> dict[str, str | None]:
+  try:
+    payload = _state_serializer().loads(state, max_age=60 * 30)
+  except SignatureExpired as exc:
+    raise HTTPException(status_code=400, detail="mercado pago oauth state expired") from exc
+  except BadSignature as exc:
+    raise HTTPException(status_code=400, detail="invalid mercado pago oauth state") from exc
+  if not isinstance(payload, dict) or not payload.get("organization_id"):
+    raise HTTPException(status_code=400, detail="invalid mercado pago oauth state")
+  return payload
+
+
+def _parse_mp_datetime(value: str | None) -> datetime | None:
+  if not value:
+    return None
+  try:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+  except ValueError:
+    return None
+
+
 def calculate_platform_fee_cents(amount_cents: int) -> int:
   settings = get_settings()
   percent_fee = int(
@@ -66,11 +145,27 @@ def _order_amount_cents(order: Order) -> int:
   return int((amount * Decimal("100")).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
 
-def _connected_account_out(organization_id: str, account: StripeConnectedAccount | None) -> ConnectedAccountOut:
+def _connected_account_out(
+  organization_id: str,
+  account: MercadoPagoConnectedAccount | StripeConnectedAccount | None,
+) -> ConnectedAccountOut:
   if account is None:
     return ConnectedAccountOut(organization_id=organization_id)
+  if isinstance(account, MercadoPagoConnectedAccount) or hasattr(account, "mp_user_id"):
+    return ConnectedAccountOut(
+      organization_id=account.organization_id,
+      provider="mercado_pago",
+      mercado_pago_user_id=account.mp_user_id,
+      mercado_pago_public_key=account.public_key,
+      onboarding_status=account.onboarding_status,
+      charges_enabled=bool(account.access_token and account.onboarding_status == "connected"),
+      payouts_enabled=bool(account.access_token and account.onboarding_status == "connected"),
+      details_submitted=bool(account.access_token and account.onboarding_status == "connected"),
+      default_currency=account.default_currency,
+    )
   return ConnectedAccountOut(
     organization_id=account.organization_id,
+    provider="stripe",
     stripe_account_id=account.stripe_account_id,
     onboarding_status=account.onboarding_status,
     charges_enabled=account.charges_enabled,
@@ -92,6 +187,10 @@ def _payment_out(payment: OrderPayment) -> OrderPaymentOut:
     status=payment.status,
     receipt_number=payment.receipt_number,
     stripe_payment_intent_id=payment.stripe_payment_intent_id,
+    mercado_pago_preference_id=getattr(payment, "mercado_pago_preference_id", None),
+    mercado_pago_payment_id=getattr(payment, "mercado_pago_payment_id", None),
+    mercado_pago_status_detail=getattr(payment, "mercado_pago_status_detail", None),
+    mercado_pago_refund_id=getattr(payment, "mercado_pago_refund_id", None),
     stripe_refund_id=payment.stripe_refund_id,
     refund_reason=payment.refund_reason,
     refunded_at=payment.refunded_at,
@@ -104,8 +203,8 @@ def _payment_out(payment: OrderPayment) -> OrderPaymentOut:
   )
 
 
-def _account_ready(account: StripeConnectedAccount) -> bool:
-  return bool(account.charges_enabled and account.payouts_enabled and account.details_submitted)
+def _account_ready(account: MercadoPagoConnectedAccount) -> bool:
+  return bool(account.access_token and account.onboarding_status == "connected")
 
 
 def _payment_list_item(payment: OrderPayment, order: Order) -> OrderPaymentListItem:
@@ -144,29 +243,8 @@ async def ensure_connected_account(
   *,
   organization_id: str,
 ) -> ConnectedAccountOut:
-  existing = await repo.get_connected_account(session, organization_id=organization_id)
-  if existing is not None:
-    return _connected_account_out(organization_id, existing)
-
-  settings = _require_stripe()
-  account = stripe.Account.create(
-    type="express",
-    country="BR",
-    capabilities={
-      "card_payments": {"requested": True},
-      "transfers": {"requested": True},
-    },
-    business_type="company",
-    metadata={"organization_id": organization_id},
-  )
-  row = StripeConnectedAccount(
-    organization_id=organization_id,
-    stripe_account_id=str(_stripe_obj_get(account, "id")),
-    onboarding_status="pending",
-    default_currency=settings.MARKETPLACE_CURRENCY.lower(),
-  )
-  await repo.create_connected_account(session, row)
-  return _connected_account_out(organization_id, row)
+  account = await repo.get_connected_account(session, organization_id=organization_id)
+  return _connected_account_out(organization_id, account)
 
 
 async def create_onboarding_link(
@@ -176,20 +254,66 @@ async def create_onboarding_link(
   return_url: str | None,
   refresh_url: str | None,
 ) -> str:
-  account_out = await ensure_connected_account(session, organization_id=organization_id)
-  settings = _require_stripe()
-  resolved_return = return_url or settings.STRIPE_CONNECT_RETURN_URL
-  resolved_refresh = refresh_url or settings.STRIPE_CONNECT_REFRESH_URL
-  if not resolved_return or not resolved_refresh:
-    raise HTTPException(status_code=400, detail="return_url and refresh_url are required")
+  settings = _require_mercado_pago_oauth_settings()
+  state = _encode_oauth_state(organization_id=organization_id, return_url=return_url, refresh_url=refresh_url)
+  params = {
+    "client_id": settings.MERCADO_PAGO_CLIENT_ID,
+    "response_type": "code",
+    "platform_id": "mp",
+    "redirect_uri": settings.MERCADO_PAGO_REDIRECT_URI,
+    "state": state,
+  }
+  return f"{settings.MERCADO_PAGO_AUTH_URL}?{urlencode(params)}"
 
-  link = stripe.AccountLink.create(
-    account=account_out.stripe_account_id,
-    refresh_url=resolved_refresh,
-    return_url=resolved_return,
-    type="account_onboarding",
-  )
-  return str(_stripe_obj_get(link, "url"))
+
+async def handle_mercado_pago_oauth_callback(
+  session: AsyncSession,
+  *,
+  code: str,
+  state: str,
+) -> str:
+  settings = _require_mercado_pago_oauth_settings()
+  state_payload = _decode_oauth_state(state)
+  organization_id = str(state_payload["organization_id"])
+  return_url = state_payload.get("return_url") or settings.STRIPE_CONNECT_RETURN_URL or settings.CORE_API_BASE_URL
+
+  token_payload = {
+    "client_secret": settings.MERCADO_PAGO_CLIENT_SECRET,
+    "client_id": settings.MERCADO_PAGO_CLIENT_ID,
+    "grant_type": "authorization_code",
+    "code": code,
+    "redirect_uri": settings.MERCADO_PAGO_REDIRECT_URI,
+  }
+  async with httpx.AsyncClient(timeout=20) as client:
+    response = await client.post(
+      f"{_mercado_pago_base_url()}/oauth/token",
+      data=token_payload,
+      headers={"accept": "application/json", "content-type": "application/x-www-form-urlencoded"},
+    )
+  _raise_mp_error(response, "unable to exchange mercado pago oauth code")
+  data = response.json()
+
+  mp_user_id = str(data.get("user_id") or data.get("collector_id") or "")
+  access_token = data.get("access_token")
+  if not mp_user_id or not access_token:
+    raise HTTPException(status_code=400, detail="mercado pago oauth response missing seller account data")
+
+  expires_in = int(data.get("expires_in") or 0)
+  token_expires_at = datetime.now(timezone.utc) + timedelta(seconds=expires_in) if expires_in > 0 else None
+  existing = await repo.get_connected_account(session, organization_id=organization_id)
+  row = existing or MercadoPagoConnectedAccount(organization_id=organization_id, mp_user_id=mp_user_id, access_token=access_token)
+  row.mp_user_id = mp_user_id
+  row.access_token = str(access_token)
+  row.refresh_token = data.get("refresh_token")
+  row.public_key = data.get("public_key")
+  row.token_expires_at = token_expires_at
+  row.onboarding_status = "connected"
+  row.live_mode = bool(data.get("live_mode", False))
+  row.default_currency = str(data.get("default_currency_id") or settings.MARKETPLACE_CURRENCY).lower()
+  if existing is None:
+    await repo.create_connected_account(session, row)
+  await session.flush()
+  return str(return_url)
 
 
 async def sync_connected_account_snapshot(
@@ -219,8 +343,7 @@ async def sync_connected_account_for_org(
   account = await repo.get_connected_account(session, organization_id=organization_id)
   if account is None:
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="connected account not configured")
-  synced = await sync_connected_account_snapshot(session, stripe_account_id=account.stripe_account_id)
-  return synced or _connected_account_out(organization_id, account)
+  return _connected_account_out(organization_id, account)
 
 
 async def create_order_checkout_session(
@@ -239,9 +362,9 @@ async def create_order_checkout_session(
 
   account = await repo.get_connected_account(session, organization_id=organization_id)
   if account is None:
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="connected account not configured")
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mercado pago account not connected")
   if not _account_ready(account):
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="connected account is not ready to receive payments")
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mercado pago account is not ready to receive payments")
 
   amount_cents = _order_amount_cents(order)
   if amount_cents <= 0:
@@ -251,43 +374,10 @@ async def create_order_checkout_session(
   if current is not None and current.status == PAYMENT_STATUS_PAID:
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="order already paid")
 
-  settings = _require_stripe()
+  settings = get_settings()
   fee_cents = calculate_platform_fee_cents(amount_cents)
   net_cents = max(amount_cents - fee_cents, 0)
   receipt_number = f"REC-{order.order_code}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
-
-  checkout = stripe.checkout.Session.create(
-    mode="payment",
-    payment_method_types=["card"],
-    line_items=[
-      {
-        "price_data": {
-          "currency": settings.MARKETPLACE_CURRENCY.lower(),
-          "product_data": {"name": f"{order.order_code} - {order.product_name}"},
-          "unit_amount": amount_cents,
-        },
-        "quantity": 1,
-      }
-    ],
-    success_url=success_url,
-    cancel_url=cancel_url,
-    client_reference_id=order_id,
-    metadata={
-      "payment_scope": "order",
-      "organization_id": organization_id,
-      "order_id": order_id,
-      "receipt_number": receipt_number,
-    },
-    payment_intent_data={
-      "application_fee_amount": fee_cents,
-      "transfer_data": {"destination": account.stripe_account_id},
-      "metadata": {
-        "payment_scope": "order",
-        "organization_id": organization_id,
-        "order_id": order_id,
-      },
-    },
-  )
 
   payment = OrderPayment(
     organization_id=organization_id,
@@ -297,17 +387,49 @@ async def create_order_checkout_session(
     net_amount_cents=net_cents,
     currency=settings.MARKETPLACE_CURRENCY.lower(),
     status=PAYMENT_STATUS_CHECKOUT_CREATED,
-    stripe_checkout_session_id=str(_stripe_obj_get(checkout, "id")),
-    stripe_payment_intent_id=(
-      str(_stripe_obj_get(checkout, "payment_intent")) if _stripe_obj_get(checkout, "payment_intent") else None
-    ),
-    stripe_transfer_destination=account.stripe_account_id,
+    stripe_transfer_destination=MERCADO_PAGO_PROVIDER_DESTINATION,
     receipt_number=receipt_number,
   )
   await repo.create_order_payment(session, payment)
+
+  webhook_base = settings.MERCADO_PAGO_WEBHOOK_URL or f"{settings.CORE_API_BASE_URL.rstrip('/')}/marketplace/mercado-pago/webhook"
+  separator = "&" if "?" in webhook_base else "?"
+  notification_url = f"{webhook_base}{separator}payment_id={payment.id}"
+  preference_payload: dict[str, Any] = {
+    "items": [
+      {
+        "id": order.id,
+        "title": f"{order.order_code} - {order.product_name}",
+        "currency_id": settings.MARKETPLACE_CURRENCY.upper(),
+        "quantity": 1,
+        "unit_price": _mp_money(amount_cents),
+      }
+    ],
+    "marketplace_fee": _mp_money(fee_cents),
+    "external_reference": payment.id,
+    "notification_url": notification_url,
+    "back_urls": {"success": success_url, "failure": cancel_url, "pending": cancel_url},
+    "auto_return": "approved",
+    "metadata": {"organization_id": organization_id, "order_id": order_id, "payment_id": payment.id},
+  }
+  async with httpx.AsyncClient(timeout=20) as client:
+    response = await client.post(
+      f"{_mercado_pago_base_url()}/checkout/preferences",
+      headers={**_mercado_pago_headers(account.access_token), "X-Idempotency-Key": str(uuid4())},
+      json=preference_payload,
+    )
+  _raise_mp_error(response, "unable to create mercado pago checkout preference")
+  preference = response.json()
+  checkout_url = (
+    preference.get("sandbox_init_point") if settings.MERCADO_PAGO_USE_SANDBOX_CHECKOUT else preference.get("init_point")
+  ) or preference.get("init_point") or preference.get("sandbox_init_point")
+  if not checkout_url:
+    raise HTTPException(status_code=400, detail="mercado pago preference response missing checkout url")
+
+  payment.mercado_pago_preference_id = str(preference.get("id"))
   order.financial_status = PAYMENT_STATUS_AWAITING
   await session.flush()
-  return OrderCheckoutSessionResponse(checkout_url=str(_stripe_obj_get(checkout, "url")), payment_id=payment.id)
+  return OrderCheckoutSessionResponse(checkout_url=str(checkout_url), payment_id=payment.id)
 
 
 async def get_finance_summary(
@@ -385,6 +507,74 @@ async def get_order_receipt(
     financial_status=order.financial_status,
     paid_at=payment.paid_at,
   )
+
+
+async def process_mercado_pago_webhook(
+  session: AsyncSession,
+  *,
+  payment_id: str | None = None,
+  mercado_pago_payment_id: str | None = None,
+) -> None:
+  payment = await repo.get_payment(session, payment_id=payment_id) if payment_id else None
+  if payment is None and mercado_pago_payment_id:
+    payment = await repo.get_payment_by_mercado_pago_payment_id(
+      session, mercado_pago_payment_id=mercado_pago_payment_id
+    )
+  if payment is None:
+    return
+
+  account = await repo.get_connected_account(session, organization_id=payment.organization_id)
+  if account is None:
+    return
+
+  if mercado_pago_payment_id is None:
+    mercado_pago_payment_id = payment.mercado_pago_payment_id
+  if mercado_pago_payment_id is None:
+    return
+
+  async with httpx.AsyncClient(timeout=20) as client:
+    response = await client.get(
+      f"{_mercado_pago_base_url()}/v1/payments/{mercado_pago_payment_id}",
+      headers=_mercado_pago_headers(account.access_token),
+    )
+  _raise_mp_error(response, "unable to fetch mercado pago payment")
+  mp_payment = response.json()
+
+  order = await repo.get_order(session, order_id=payment.order_id)
+  payment.mercado_pago_payment_id = str(mp_payment.get("id") or mercado_pago_payment_id)
+  payment.mercado_pago_status_detail = mp_payment.get("status_detail")
+  payment_error = mp_payment.get("status_detail") or mp_payment.get("status")
+  status_value = str(mp_payment.get("status") or "").lower()
+
+  if status_value == "approved":
+    if payment.status not in {PAYMENT_STATUS_PAYOUT_SENT, PAYMENT_STATUS_REFUNDED}:
+      payment.status = PAYMENT_STATUS_PAID
+    payment.paid_at = _parse_mp_datetime(mp_payment.get("date_approved")) or datetime.now(timezone.utc)
+    if order is not None:
+      order.financial_status = payment.status if payment.status == PAYMENT_STATUS_PAYOUT_SENT else PAYMENT_STATUS_PAID
+  elif status_value in {"refunded", "partially_refunded"}:
+    payment.status = PAYMENT_STATUS_REFUNDED
+    payment.refunded_at = datetime.now(timezone.utc)
+    if order is not None:
+      order.financial_status = PAYMENT_STATUS_REFUNDED
+  elif status_value == "charged_back":
+    payment.status = PAYMENT_STATUS_DISPUTED
+    payment.dispute_status = payment_error
+    payment.disputed_at = datetime.now(timezone.utc)
+    if order is not None:
+      order.financial_status = PAYMENT_STATUS_DISPUTED
+  elif status_value in {"rejected"}:
+    payment.status = PAYMENT_STATUS_FAILED
+    payment.payment_error = payment_error
+    if order is not None:
+      order.financial_status = PAYMENT_STATUS_FAILED
+  elif status_value in {"cancelled", "canceled"}:
+    payment.status = PAYMENT_STATUS_CANCELLED
+    payment.payment_error = payment_error
+    if order is not None:
+      order.financial_status = PAYMENT_STATUS_CANCELLED
+
+  await session.flush()
 
 
 async def mark_checkout_completed(
@@ -484,21 +674,24 @@ async def request_order_refund(
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="payment not found")
   if payment.status not in {PAYMENT_STATUS_PAID, PAYMENT_STATUS_PAYOUT_SENT}:
     raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="payment is not refundable")
-  if not payment.stripe_payment_intent_id:
-    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="payment intent not available")
+  if not payment.mercado_pago_payment_id:
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mercado pago payment id not available")
 
-  _require_stripe()
-  try:
-    refund = stripe.Refund.create(
-      payment_intent=payment.stripe_payment_intent_id,
-      reason=reason,
-      metadata={"organization_id": organization_id, "order_id": order_id, "payment_id": payment.id},
+  account = await repo.get_connected_account(session, organization_id=organization_id)
+  if account is None:
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="mercado pago account not connected")
+
+  async with httpx.AsyncClient(timeout=20) as client:
+    response = await client.post(
+      f"{_mercado_pago_base_url()}/v1/payments/{payment.mercado_pago_payment_id}/refunds",
+      headers={**_mercado_pago_headers(account.access_token), "X-Idempotency-Key": str(uuid4())},
+      json={},
     )
-  except Exception as exc:
-    raise HTTPException(status_code=400, detail=f"unable to create refund: {exc}") from exc
+  _raise_mp_error(response, "unable to create mercado pago refund")
+  refund = response.json()
 
   payment.status = PAYMENT_STATUS_REFUND_PENDING
-  payment.stripe_refund_id = str(_stripe_obj_get(refund, "id"))
+  payment.mercado_pago_refund_id = str(refund.get("id") or "")
   payment.refund_reason = reason
   order.financial_status = PAYMENT_STATUS_REFUND_PENDING
   await session.flush()

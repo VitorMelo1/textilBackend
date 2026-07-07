@@ -1,6 +1,6 @@
 """production finance and chat controls
 
-Revision ID: 0010_production_finance_chat_controls
+Revision ID: 0010_finance_chat
 Revises: 0009_real_provider_chat
 Create Date: 2026-07-01
 """
@@ -12,7 +12,7 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 
-revision = "0010_production_finance_chat_controls"
+revision = "0010_finance_chat"
 down_revision = "0009_real_provider_chat"
 branch_labels = None
 depends_on = None

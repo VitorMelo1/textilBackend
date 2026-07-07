@@ -406,6 +406,23 @@ class StripeConnectedAccount(Base, TimestampMixin):
   default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="brl", server_default="brl")
 
 
+class MercadoPagoConnectedAccount(Base, TimestampMixin):
+  __tablename__ = "mercado_pago_connected_accounts"
+
+  id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+  organization_id: Mapped[str] = mapped_column(
+    UUID(as_uuid=False), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+  )
+  mp_user_id: Mapped[str] = mapped_column(String(120), nullable=False, unique=True, index=True)
+  access_token: Mapped[str] = mapped_column(Text, nullable=False)
+  refresh_token: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+  public_key: Mapped[Optional[str]] = mapped_column(String(180), nullable=True)
+  token_expires_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+  onboarding_status: Mapped[str] = mapped_column(String(40), nullable=False, default="connected", server_default="connected")
+  live_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default="false")
+  default_currency: Mapped[str] = mapped_column(String(10), nullable=False, default="brl", server_default="brl")
+
+
 class OrderPayment(Base, TimestampMixin):
   __tablename__ = "order_payments"
 
@@ -424,6 +441,10 @@ class OrderPayment(Base, TimestampMixin):
   stripe_checkout_session_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, unique=True)
   stripe_payment_intent_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
   stripe_transfer_destination: Mapped[str] = mapped_column(String(120), nullable=False)
+  mercado_pago_preference_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, unique=True)
+  mercado_pago_payment_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
+  mercado_pago_status_detail: Mapped[Optional[str]] = mapped_column(String(180), nullable=True)
+  mercado_pago_refund_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
   stripe_refund_id: Mapped[Optional[str]] = mapped_column(String(180), nullable=True, index=True)
   refund_reason: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
   refunded_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)

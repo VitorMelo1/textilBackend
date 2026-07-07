@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.db.session import get_db_session
@@ -64,6 +65,46 @@ async def sync_connected_account(
   account = await service.sync_connected_account_for_org(session, organization_id=claims.org)
   await session.commit()
   return account
+
+
+@router.get("/marketplace/mercado-pago/oauth/callback")
+async def mercado_pago_oauth_callback(
+  code: str = Query(...),
+  state: str = Query(...),
+  session: AsyncSession = Depends(get_db_session),
+):
+  redirect_url = await service.handle_mercado_pago_oauth_callback(session, code=code, state=state)
+  await session.commit()
+  return RedirectResponse(redirect_url)
+
+
+@router.post("/marketplace/mercado-pago/webhook")
+async def mercado_pago_webhook(
+  request: Request,
+  payment_id: str | None = Query(None),
+  session: AsyncSession = Depends(get_db_session),
+):
+  try:
+    payload = await request.json()
+  except Exception:
+    payload = {}
+  data = payload.get("data") if isinstance(payload, dict) else None
+  mercado_pago_payment_id = None
+  if isinstance(data, dict):
+    mercado_pago_payment_id = data.get("id")
+  if mercado_pago_payment_id is None and isinstance(payload, dict):
+    mercado_pago_payment_id = payload.get("id") or payload.get("resource")
+  if mercado_pago_payment_id is None:
+    mercado_pago_payment_id = request.query_params.get("id")
+  if isinstance(mercado_pago_payment_id, str) and "/" in mercado_pago_payment_id:
+    mercado_pago_payment_id = mercado_pago_payment_id.rstrip("/").split("/")[-1]
+  await service.process_mercado_pago_webhook(
+    session,
+    payment_id=payment_id,
+    mercado_pago_payment_id=str(mercado_pago_payment_id) if mercado_pago_payment_id else None,
+  )
+  await session.commit()
+  return {"received": True}
 
 
 @router.get("/marketplace/finance/summary", response_model=MarketplaceFinanceSummary)

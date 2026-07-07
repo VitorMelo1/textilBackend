@@ -19,8 +19,10 @@ REQUIRED_ENV = [
   "STRIPE_PRICE_BASIC",
   "STRIPE_PRICE_PROFESSIONAL",
   "STRIPE_PRICE_ENTERPRISE",
-  "STRIPE_CONNECT_RETURN_URL",
-  "STRIPE_CONNECT_REFRESH_URL",
+  "MERCADO_PAGO_CLIENT_ID",
+  "MERCADO_PAGO_CLIENT_SECRET",
+  "MERCADO_PAGO_REDIRECT_URI",
+  "MERCADO_PAGO_WEBHOOK_URL",
 ]
 
 PLACEHOLDER_VALUES = {"change-me-in-dev", "change-me", "changeme", "secret", "dev-secret"}
@@ -49,7 +51,7 @@ def main() -> int:
   if os.getenv("AUTH_COOKIE_SECURE", "").strip().lower() not in {"true", "1", "yes"}:
     problems.append("AUTH_COOKIE_SECURE precisa ser true em producao")
 
-  for key in ("CORE_API_BASE_URL", "CHAT_SERVICE_BASE_URL", "STRIPE_CONNECT_RETURN_URL", "STRIPE_CONNECT_REFRESH_URL"):
+  for key in ("CORE_API_BASE_URL", "CHAT_SERVICE_BASE_URL", "MERCADO_PAGO_REDIRECT_URI", "MERCADO_PAGO_WEBHOOK_URL"):
     value = os.getenv(key, "")
     if value and not _is_https_url(value):
       problems.append(f"{key} precisa usar HTTPS publico")
@@ -57,6 +59,13 @@ def main() -> int:
   stripe_key = os.getenv("STRIPE_SECRET_KEY", "")
   if stripe_key and not stripe_key.startswith("sk_live_"):
     problems.append("STRIPE_SECRET_KEY precisa ser chave live em producao")
+
+  mercado_pago_client_id = os.getenv("MERCADO_PAGO_CLIENT_ID", "")
+  mercado_pago_client_secret = os.getenv("MERCADO_PAGO_CLIENT_SECRET", "")
+  if mercado_pago_client_id and mercado_pago_client_id.startswith("TEST-"):
+    problems.append("MERCADO_PAGO_CLIENT_ID precisa ser credencial live em producao")
+  if mercado_pago_client_secret and mercado_pago_client_secret.startswith("TEST-"):
+    problems.append("MERCADO_PAGO_CLIENT_SECRET precisa ser credencial live em producao")
 
   cors_origins = [item.strip() for item in os.getenv("CORS_ORIGINS", "").split(",") if item.strip()]
   if any(origin.startswith("http://") for origin in cors_origins):
